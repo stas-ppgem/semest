@@ -1,0 +1,3 @@
+﻿  ui.c
+C:\Users\sts\Downloads\jottyu\src\ui.c(377,17): warning C4101: ps: неиспользованная локальная переменная
+  sem.vcxproj -> C:\Users\sts\source\repos\sem\x64\Debug\sem.exe
