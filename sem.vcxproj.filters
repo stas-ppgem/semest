@@ -15,21 +15,21 @@
     </Filter>
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="..\..\..\Downloads\brotato-like\src\ui.h">
+    <ClInclude Include="src\core.h">
       <Filter>Файлы заголовков</Filter>
     </ClInclude>
-    <ClInclude Include="..\..\..\Downloads\jottyu\src\core.h">
+    <ClInclude Include="src\ui.h">
       <Filter>Файлы заголовков</Filter>
     </ClInclude>
   </ItemGroup>
   <ItemGroup>
-    <ClCompile Include="..\..\..\Downloads\jottyu\src\main.c">
+    <ClCompile Include="src\main.c">
       <Filter>Исходные файлы</Filter>
     </ClCompile>
-    <ClCompile Include="..\..\..\Downloads\jottyu\src\ui.c">
+    <ClCompile Include="src\ui.c">
       <Filter>Исходные файлы</Filter>
     </ClCompile>
-    <ClCompile Include="..\..\..\Downloads\jottyu\src\core.c">
+    <ClCompile Include="src\core.c">
       <Filter>Исходные файлы</Filter>
     </ClCompile>
   </ItemGroup>

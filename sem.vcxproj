@@ -18,6 +18,15 @@
       <Platform>x64</Platform>
     </ProjectConfiguration>
   </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="src\core.h" />
+    <ClInclude Include="src\ui.h" />
+  </ItemGroup>
+  <ItemGroup>
+    <ClCompile Include="src\core.c" />
+    <ClCompile Include="src\main.c" />
+    <ClCompile Include="src\ui.c" />
+  </ItemGroup>
   <PropertyGroup Label="Globals">
     <VCProjectVersion>18.0</VCProjectVersion>
     <Keyword>Win32Proj</Keyword>
@@ -128,15 +137,6 @@
       <GenerateDebugInformation>true</GenerateDebugInformation>
     </Link>
   </ItemDefinitionGroup>
-  <ItemGroup>
-    <ClInclude Include="..\..\..\Downloads\brotato-like\src\ui.h" />
-    <ClInclude Include="..\..\..\Downloads\jottyu\src\core.h" />
-  </ItemGroup>
-  <ItemGroup>
-    <ClCompile Include="..\..\..\Downloads\jottyu\src\core.c" />
-    <ClCompile Include="..\..\..\Downloads\jottyu\src\main.c" />
-    <ClCompile Include="..\..\..\Downloads\jottyu\src\ui.c" />
-  </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">
   </ImportGroup>
