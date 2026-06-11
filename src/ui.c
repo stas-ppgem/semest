@@ -26,6 +26,8 @@
 #define COL_UPGRADE_HL  RGB( 60, 100, 180)   /* выделение карточки       */
 #define COL_DEAD_BG     RGB( 30,   0,   0)   /* оверлей смерти           */
 
+static HBITMAP s_sprPlayer = NULL;
+
 /* --------------------------------------------------------------------- */
 /*  WndProc — обработчик Win32-сообщений                                */
 /* --------------------------------------------------------------------- */
@@ -37,6 +39,12 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
     case WM_KEYDOWN:
         if (wp == VK_ESCAPE) PostQuitMessage(0);
         return 0;
+    case WM_PAINT: {
+        PAINTSTRUCT ps;
+        BeginPaint(hwnd, &ps);
+        EndPaint(hwnd, &ps);
+        return 0;
+    }
     }
     return DefWindowProc(hwnd, msg, wp, lp);
 }
@@ -55,6 +63,7 @@ HWND UI_CreateWindow(HINSTANCE hInst, int width, int height, const char *title) 
     wc.lpszClassName = "BrotolikeWnd";
     if (!RegisterClassExA(&wc)) return NULL;
 
+
     /* Подбираем размер окна с учётом заголовка и рамки */
     RECT rc = { 0, 0, width, height };
     AdjustWindowRect(&rc, WS_OVERLAPPEDWINDOW, FALSE);
@@ -70,6 +79,9 @@ HWND UI_CreateWindow(HINSTANCE hInst, int width, int height, const char *title) 
 
     ShowWindow(hwnd, SW_SHOW);
     UpdateWindow(hwnd);
+    /* Load sprites after window is created */
+    s_sprPlayer = (HBITMAP)LoadImageA(NULL, "assets/player.bmp", IMAGE_BITMAP, 0, 0, LR_LOADFROMFILE);
+    if (!s_sprPlayer) MessageBoxA(NULL, "player.bmp not found!", "Error", MB_OK);
     return hwnd;
 }
 
@@ -77,6 +89,7 @@ HWND UI_CreateWindow(HINSTANCE hInst, int width, int height, const char *title) 
 /*  UI_Destroy  —  освободить GDI-ресурсы (расширяй по мере роста кода) */
 /* --------------------------------------------------------------------- */
 void UI_Destroy(void) {
+    if (s_sprPlayer) { DeleteObject(s_sprPlayer);     s_sprPlayer = NULL; }
     /* Здесь удалять шрифты, кисти и прочие объекты, созданные при     */
     /* инициализации. Сейчас они создаются и удаляются внутри Render.  */
 }
@@ -106,6 +119,15 @@ static void FillRect2(HDC hdc, int x, int y, int w, int h, COLORREF col) {
     RECT   rc = { x, y, x+w, y+h };
     FillRect(hdc, &rc, br);
     DeleteObject(br);          /* обязательно — иначе утечка GDI       */
+}
+
+static void DrawSprite(HDC hdc, HBITMAP spr, int x, int y, int w, int h) {
+    if (!spr) return;
+    HDC hdcBmp = CreateCompatibleDC(hdc);
+    HBITMAP old = SelectObject(hdcBmp, spr);
+    BitBlt(hdc, x, y, w, h, hdcBmp, 0, 0, SRCCOPY);  /* без прозрачности */
+    SelectObject(hdcBmp, old);
+    DeleteDC(hdcBmp);
 }
 
 /* Нарисовать прямоугольник (рамку) */
@@ -245,6 +267,8 @@ static void RenderPlaying(HDC hdc, const GameState *gs) {
         FillRect2(hdc, (int)b->x - 4, (int)b->y - 4, 8, 8, COL_BULLET);
     }
 
+    
+
     /* Игрок (мигает при неуязвимости) */
     int drawPlayer = 1;
     if (gs->player.invTimer > 0) {
@@ -252,8 +276,7 @@ static void RenderPlaying(HDC hdc, const GameState *gs) {
         drawPlayer = ((int)(gs->player.invTimer / 0.1f) % 2 == 0);
     }
     if (drawPlayer) {
-        COLORREF pcol = (gs->player.invTimer > 0) ? COL_PLAYER_INV : COL_PLAYER;
-        FillRect2(hdc, (int)gs->player.x - 12, (int)gs->player.y - 12, 24, 24, pcol);
+        DrawSprite(hdc, s_sprPlayer, (int)gs->player.x - 12, (int)gs->player.y - 12, 24, 24);
     }
 
     /* HUD — верхняя полоска */
@@ -349,6 +372,16 @@ static void RenderDead(HDC hdc, const GameState *gs) {
     snprintf(buf, sizeof(buf), "Счёт: %d   |   Волна: %d", gs->score, gs->wave);
     DrawTextCenter(hdc, 0, 260, ARENA_W, 40, buf, COL_TEXT);
     DrawTextCenter(hdc, 0, 320, ARENA_W, 40, "Нажми R для перезапуска", RGB(140,140,140));
+    DrawTextCenter(hdc, 0, 380, ARENA_W, 24, "Рекорды:", RGB(200, 200, 100));
+
+    static const char* diffNames[] = { "Easy", "Normal", "Hard" };
+    char buf2[64];
+    for (int i = 0; i < gs->highScores.count; i++) {
+        const ScoreEntry* e = &gs->highScores.entries[i];
+        snprintf(buf2, sizeof(buf2), "#%d  %d очков  волна %d  [%s]",
+            i + 1, e->score, e->wave, diffNames[e->difficulty]);
+        DrawTextCenter(hdc, 0, 410 + i * 24, ARENA_W, 22, buf2, COL_TEXT);
+    }
 }
 
 /* --------------------------------------------------------------------- */
@@ -368,13 +401,22 @@ static void RenderWin(HDC hdc, const GameState *gs) {
     snprintf(buf, sizeof(buf), "Итоговый счёт: %d", gs->score);
     DrawTextCenter(hdc, 0, 260, ARENA_W, 40, buf, COL_TEXT);
     DrawTextCenter(hdc, 0, 320, ARENA_W, 40, "Нажми R для новой игры", RGB(140,140,140));
+    DrawTextCenter(hdc, 0, 380, ARENA_W, 24, "Рекорды:", RGB(200, 200, 100));
+
+    static const char* diffNames[] = { "Easy", "Normal", "Hard" };
+    char buf2[64];
+    for (int i = 0; i < gs->highScores.count; i++) {
+        const ScoreEntry* e = &gs->highScores.entries[i];
+        snprintf(buf2, sizeof(buf2), "#%d  %d очков  волна %d  [%s]",
+            i + 1, e->score, e->wave, diffNames[e->difficulty]);
+        DrawTextCenter(hdc, 0, 410 + i * 24, ARENA_W, 22, buf2, COL_TEXT);
+    }
 }
 
 /* --------------------------------------------------------------------- */
 /*  UI_Render  —  точка входа рендера, двойная буферизация              */
 /* --------------------------------------------------------------------- */
 void UI_Render(HWND hwnd, const GameState *gs) {
-    PAINTSTRUCT ps;
     HDC hdc = GetDC(hwnd);
 
     /* --- Создаём back-buffer ---------------------------------------- */
@@ -384,7 +426,7 @@ void UI_Render(HWND hwnd, const GameState *gs) {
 
     /* --- Выбираем шрифт для HUD ------------------------------------ */
     HFONT hudFont = CreateFontA(16, 0, 0, 0, FW_NORMAL, 0, 0, 0,
-                                DEFAULT_CHARSET, 0, 0, 0, 0, "Consolas");
+                                RUSSIAN_CHARSET, 0, 0, 0, 0, "Consolas");
     HFONT oldFont = SelectObject(hdcMem, hudFont);
 
     /* --- Рисуем нужный экран на back-buffer ------------------------- */

@@ -1,24 +1,25 @@
 /* =====================================================================
-   core.c  --  Р’СЃСЏ РёРіСЂРѕРІР°СЏ Р»РѕРіРёРєР°
-   Р‘Р•Р— #include <windows.h> вЂ” С‚РѕР»СЊРєРѕ СЃС‚Р°РЅРґР°СЂС‚РЅР°СЏ Р±РёР±Р»РёРѕС‚РµРєР° C
+   core.c  --  Вся игровая логика
+   БЕЗ #include <windows.h> — только стандартная библиотека C
    ===================================================================== */
 
 #include "core.h"
 #include <math.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
 
 /* --------------------------------------------------------------------- */
-/*  РћРїРёСЃР°РЅРёСЏ Р°РїРіСЂРµР№РґРѕРІ                                                   */
+/*  Описания апгрейдов                                                   */
 /* --------------------------------------------------------------------- */
 static const UpgradeInfo s_upgrades[UPGRADE_COUNT] = {
-    { 0, "+1 HP Regen",      "Р’РѕСЃСЃС‚Р°РЅР°РІР»РёРІР°С‚СЊ 1 HP РєР°Р¶РґС‹Рµ 5 СЃРµРє"  },
-    { 1, "РЎРєРѕСЂРѕСЃС‚СЊ +20%",    "РРіСЂРѕРє РґРІРёРіР°РµС‚СЃСЏ Р±С‹СЃС‚СЂРµРµ"            },
-    { 2, "РЈСЂРѕРЅ РїСѓР»СЊ x1.5",   "РџСѓР»Рё РЅР°РЅРѕСЃСЏС‚ Р±РѕР»СЊС€Рµ СѓСЂРѕРЅР°"          },
-    { 3, "РЎРєРѕСЂРѕСЃС‚СЂРµР»СЊРЅРѕСЃС‚СЊ", "РљСѓР»РґР°СѓРЅ СЃС‚СЂРµР»СЊР±С‹ СѓРјРµРЅСЊС€РµРЅ РЅР° 25%"   },
-    { 4, "РџСЂРѕР±РёС‚РёРµ",         "РџСѓР»Рё РїСЂРѕР±РёРІР°СЋС‚ 2 РІСЂР°РіРѕРІ"            },
-    { 5, "+30 Max HP",       "РЈРІРµР»РёС‡РёРІР°РµС‚ РјР°РєСЃРёРјР°Р»СЊРЅС‹Р№ Р·Р°РїР°СЃ HP"   },
+    { 0, "+1 HP Regen",      "Раз в 5 сек"  },
+    { 1, "Скорость +20%",    "Игрок двигается быстрее"            },
+    { 2, "Урон пуль x1.5",   "Пули наносят больше урона"          },
+    { 3, "Скорострельность +25%", "Скорострельность увеличена"   },
+    { 4, "Пробитие",         "Пули пробивают 2 врагов"            },
+    { 5, "+30 Max HP",       "Увеличивает запас HP"   },
 };
 
 const UpgradeInfo *Core_GetUpgradeInfo(int id) {
@@ -27,28 +28,28 @@ const UpgradeInfo *Core_GetUpgradeInfo(int id) {
 }
 
 /* --------------------------------------------------------------------- */
-/*  Р’СЃРїРѕРјРѕРіР°С‚РµР»СЊРЅС‹Рµ С„СѓРЅРєС†РёРё                                              */
+/*  Вспомогательные функции                                              */
 /* --------------------------------------------------------------------- */
 
-/* Р“РµРЅРµСЂР°С†РёСЏ СЃР»СѓС‡Р°Р№РЅРѕРіРѕ float РІ РґРёР°РїР°Р·РѕРЅРµ [lo, hi) */
+/* Генерация случайного float в диапазоне [lo, hi) */
 static float RandF(float lo, float hi) {
     return lo + (hi - lo) * ((float)rand() / (float)RAND_MAX);
 }
 
-/* РќРѕСЂРјР°Р»РёР·Р°С†РёСЏ РІРµРєС‚РѕСЂР° */
+/* Нормализация вектора */
 static void Normalize(float *vx, float *vy) {
     float len = sqrtf((*vx) * (*vx) + (*vy) * (*vy));
     if (len > 0.0001f) { *vx /= len; *vy /= len; }
 }
 
-/* AABB-РєРѕР»Р»РёР·РёСЏ РґРІСѓС… РїСЂСЏРјРѕСѓРіРѕР»СЊРЅРёРєРѕРІ (x,y вЂ” С†РµРЅС‚СЂ) */
+/* AABB-коллизия двух прямоугольников (x,y — центр) */
 static int CheckAABB(float x1, float y1, float w1, float h1,
                      float x2, float y2, float w2, float h2) {
     return (fabsf(x1 - x2) < (w1 + w2) * 0.5f) &&
            (fabsf(y1 - y2) < (h1 + h2) * 0.5f);
 }
 
-/* РџРѕРёСЃРє Р±Р»РёР¶Р°Р№С€РµРіРѕ Р¶РёРІРѕРіРѕ РІСЂР°РіР° (РІРѕР·РІСЂР°С‰Р°РµС‚ РёРЅРґРµРєСЃ РёР»Рё -1) */
+/* Поиск ближайшего живого врага (возвращает индекс или -1) */
 static int FindNearestEnemy(const GameState *gs) {
     int   best  = -1;
     float bestD = 1e30f;
@@ -62,21 +63,23 @@ static int FindNearestEnemy(const GameState *gs) {
     return best;
 }
 
-/* Р”РѕР±Р°РІРёС‚СЊ РїСѓР»СЋ РІ РјР°СЃСЃРёРІ */
-static void SpawnBullet(GameState *gs, float vx, float vy) {
+/* Добавить пулю в массив */
+static void SpawnBullet(GameState* gs, float vx, float vy) {
     for (int i = 0; i < MAX_BULLETS; i++) {
         if (gs->bullets[i].alive) continue;
-        gs->bullets[i].x      = gs->player.x;
-        gs->bullets[i].y      = gs->player.y;
-        gs->bullets[i].vx     = vx;
-        gs->bullets[i].vy     = vy;
+        gs->bullets[i].x = gs->player.x;
+        gs->bullets[i].y = gs->player.y;
+        gs->bullets[i].vx = vx;
+        gs->bullets[i].vy = vy;
         gs->bullets[i].damage = gs->player.bulletDamage;
-        gs->bullets[i].alive  = 1;
+        gs->bullets[i].alive = 1;
+        gs->bullets[i].hitCount = 0;                          
+        memset(gs->bullets[i].hitIds, 0, sizeof(gs->bullets[i].hitIds)); 
         break;
     }
 }
 
-/* Р”РѕР±Р°РІРёС‚СЊ РіРµРј РѕРїС‹С‚Р° */
+/* Добавить гем опыта */
 static void SpawnGem(GameState *gs, float x, float y, int value) {
     for (int i = 0; i < MAX_GEMS; i++) {
         if (gs->gems[i].alive) continue;
@@ -88,9 +91,18 @@ static void SpawnGem(GameState *gs, float x, float y, int value) {
     }
 }
 
-/* РџР°СЂР°РјРµС‚СЂС‹ РІСЂР°РіР° РїРѕ С‚РёРїСѓ + РјР°СЃС€С‚Р°Р± HP РїРѕ РЅРѕРјРµСЂСѓ РІРѕР»РЅС‹.
-   Р¤РѕСЂРјСѓР»Р°: Р±Р°Р·РѕРІС‹Р№ HP * (1 + 0.2 * (wave-1))
-   Р’РѕР»РЅР° 1 = x1.0, РІРѕР»РЅР° 5 = x1.8, РІРѕР»РЅР° 10 = x2.8               */
+/* Возвращает точный размер хитбокса врага для коллизий */
+static float GetEnemySize(EnemyType type) {
+    switch (type) {
+    case ENEMY_FAST:  return 18.0f;
+    case ENEMY_TANK:  return 38.0f;
+    default:          return 26.0f; /* ENEMY_BASIC */
+    }
+}
+
+/* Параметры врага по типу + масштаб HP по номеру волны.
+   Формула: базовый HP * (1 + 0.2 * (wave-1))
+   Волна 1 = x1.0, волна 5 = x1.8, волна 10 = x2.8               */
 static void EnemyDefaults(Enemy *e, EnemyType type, int wave, float hpScalePerWave) {
     float hpScale = 1.0f + hpScalePerWave * (wave - 1);
     e->type = type;
@@ -104,12 +116,12 @@ static void EnemyDefaults(Enemy *e, EnemyType type, int wave, float hpScalePerWa
     }
 }
 
-/* РЎРїР°РІРЅ РІСЂР°РіР° РЅР° СЂР°РЅРґРѕРјРЅРѕРј РєСЂР°СЋ Р°СЂРµРЅС‹ */
+/* Спавн врага на рандомном краю арены */
 static void SpawnEnemy(GameState *gs) {
     for (int i = 0; i < MAX_ENEMIES; i++) {
         if (gs->enemies[i].alive) continue;
 
-        /* 4 РєСЂР°СЏ: 0=top 1=bottom 2=left 3=right */
+        /* 4 края: 0=top 1=bottom 2=left 3=right */
         int side = rand() % 4;
         switch (side) {
         case 0: gs->enemies[i].x = RandF(0, ARENA_W); gs->enemies[i].y = -20; break;
@@ -118,7 +130,7 @@ static void SpawnEnemy(GameState *gs) {
         case 3: gs->enemies[i].x = ARENA_W + 20;       gs->enemies[i].y = RandF(0, ARENA_H); break;
         }
 
-        /* Р’ РїРѕР·РґРЅРёС… РІРѕР»РЅР°С… С‡Р°С‰Рµ С‚Р°РЅРєРё Рё Р±С‹СЃС‚СЂС‹Рµ */
+        /* В поздних волнах чаще танки и быстрые */
         EnemyType type = ENEMY_BASIC;
         if (gs->wave >= 3 && rand() % 4 == 0) type = ENEMY_FAST;
         if (gs->wave >= 5 && rand() % 6 == 0) type = ENEMY_TANK;
@@ -130,7 +142,7 @@ static void SpawnEnemy(GameState *gs) {
 }
 
 /* --------------------------------------------------------------------- */
-/*  РџСЂРµРґР»РѕР¶РёС‚СЊ 3 СЃР»СѓС‡Р°Р№РЅС‹С… СѓРЅРёРєР°Р»СЊРЅС‹С… Р°РїРіСЂРµР№РґР°                          */
+/*  Предложить 3 случайных уникальных апгрейда                          */
 /* --------------------------------------------------------------------- */
 static void MakeUpgradeOffer(GameState *gs) {
     int picked[3] = { -1, -1, -1 };
@@ -149,7 +161,7 @@ static void MakeUpgradeOffer(GameState *gs) {
 }
 
 /* --------------------------------------------------------------------- */
-/*  Core_Init  вЂ”  СЃР±СЂРѕСЃРёС‚СЊ СЃРѕСЃС‚РѕСЏРЅРёРµ РІ РЅР°С‡Р°Р»Рѕ РёРіСЂС‹                      */
+/*  Core_Init  —  сбросить состояние в начало игры                      */
 /* --------------------------------------------------------------------- */
 void Core_Init(GameState *gs) {
     srand((unsigned)time(NULL));
@@ -160,43 +172,51 @@ void Core_Init(GameState *gs) {
     gs->player.speed        = 180.0f;
     gs->player.hp           = 100;
     gs->player.maxHp        = 100;
-    gs->player.fireCooldown = 0.35f;  /* СЃРµРєСѓРЅРґ РјРµР¶РґСѓ РІС‹СЃС‚СЂРµР»Р°РјРё       */
+    gs->player.fireCooldown = 0.35f;  /* секунд между выстрелами       */
     gs->player.bulletSpeed  = 400.0f;
     gs->player.bulletDamage = 10;
 
     gs->totalWaves       = 10;
     gs->spawnInterval    = 1.5f;
-    gs->hpScalePerWave   = 0.2f;      /* default: РЅРѕСЂРјР°Р»СЊРЅР°СЏ            */
+    gs->hpScalePerWave   = 0.2f;      /* default: нормальная            */
     gs->phase            = PHASE_MENU;
 
-    //Core_StartWave(gs);
 }
 
 /* --------------------------------------------------------------------- */
-/*  Core_SetDifficulty  вЂ”  Р·Р°РїРѕРјРЅРёС‚СЊ СЃР»РѕР¶РЅРѕСЃС‚СЊ Рё РїРµСЂРµР№С‚Рё Рє РёРіСЂРµ         */
+/*  Core_SetDifficulty  —  запомнить сложность и перейти к игре         */
 /* --------------------------------------------------------------------- */
-void Core_SetDifficulty(GameState *gs, int difficulty) {
+void Core_SetDifficulty(GameState* gs, int difficulty) {
     gs->difficulty = difficulty;
     switch (difficulty) {
-    case 0: gs->hpScalePerWave = 0.1f; break; /* Р»С‘РіРєР°СЏ:   +10% HP Р·Р° РІРѕР»РЅСѓ */
-    case 1: gs->hpScalePerWave = 0.2f; break; /* РЅРѕСЂРјР°Р»СЊРЅР°СЏ: +20% HP Р·Р° РІРѕР»РЅСѓ */
-    case 2: gs->hpScalePerWave = 0.35f; break;/* СЃР»РѕР¶РЅР°СЏ:  +35% HP Р·Р° РІРѕР»РЅСѓ */
+    case 0:
+        gs->hpScalePerWave = 0.1f;
+        gs->baseSpawnInterval = 1.2f;  /* лёгкая */
+        break;
+    case 1:
+        gs->hpScalePerWave = 0.2f;
+        gs->baseSpawnInterval = 1.0f;  /* нормальная */
+        break;
+    case 2:
+        gs->hpScalePerWave = 0.35f;
+        gs->baseSpawnInterval = 0.7f;  /* сложная */
+        break;
     }
     Core_StartWave(gs);
 }
 
 /* --------------------------------------------------------------------- */
-/*  Core_StartWave  вЂ”  РїРѕРґРіРѕС‚РѕРІРёС‚СЊ СЃР»РµРґСѓСЋС‰СѓСЋ РІРѕР»РЅСѓ                      */
+/*  Core_StartWave  —  подготовить следующую волну                      */
 /* --------------------------------------------------------------------- */
 void Core_StartWave(GameState *gs) {
     gs->wave++;
-    /* Р’СЂР°РіРѕРІ РЅР° РІРѕР»РЅРµ: 5 + 3 Р·Р° РєР°Р¶РґСѓСЋ РІРѕР»РЅСѓ */
+    /* Врагов на волне: 5 + 3 за каждую волну */
     gs->enemiesLeft   = 5 + gs->wave * 3;
     gs->spawnTimer    = 0.0f;
-    gs->spawnInterval = 1.5f - gs->wave * 0.08f;
+    gs->spawnInterval = gs->baseSpawnInterval - gs->wave * 0.06f;
     if (gs->spawnInterval < 0.3f) gs->spawnInterval = 0.3f;
 
-    /* РћС‡РёС‰Р°РµРј РїСѓР»Рё, РЅРѕ РѕСЃС‚Р°РІР»СЏРµРј РіРµРјС‹ (РёРіСЂРѕРє РјРѕРі РЅРµ РїРѕРґРѕР±СЂР°С‚СЊ) */
+    /* Очищаем пули, но оставляем гемы (игрок мог не подобрать) */
     memset(gs->bullets, 0, sizeof(gs->bullets));
     memset(gs->enemies, 0, sizeof(gs->enemies));
 
@@ -204,25 +224,25 @@ void Core_StartWave(GameState *gs) {
 }
 
 /* --------------------------------------------------------------------- */
-/*  Core_ApplyUpgrade  вЂ”  РїСЂРёРјРµРЅРёС‚СЊ РІС‹Р±СЂР°РЅРЅС‹Р№ Р°РїРіСЂРµР№Рґ                   */
+/*  Core_ApplyUpgrade  —  применить выбранный апгрейд                   */
 /* --------------------------------------------------------------------- */
 void Core_ApplyUpgrade(GameState *gs, int upgradeId) {
     if (upgradeId < 0 || upgradeId >= UPGRADE_COUNT) return;
     gs->player.upgrades[upgradeId]++;
 
     switch (upgradeId) {
-    case 0: /* HP regen вЂ” РѕР±СЂР°Р±Р°С‚С‹РІР°РµС‚СЃСЏ РІ Core_Update */         break;
+    case 0: /* HP regen — обрабатывается в Core_Update */         break;
     case 1: gs->player.speed        *= 1.20f;                     break;
     case 2: gs->player.bulletDamage  = (int)(gs->player.bulletDamage * 1.5f); break;
     case 3: gs->player.fireCooldown *= 0.75f;                     break;
-    case 4: /* РїСЂРѕР±РёС‚РёРµ вЂ” РѕР±СЂР°Р±Р°С‚С‹РІР°РµС‚СЃСЏ РІ Р»РѕРіРёРєРµ РїСѓР»СЊ */         break;
+    case 4: /* пробитие — обрабатывается в логике пуль */         break;
     case 5:
         gs->player.maxHp += 30;
         gs->player.hp    += 30;
         break;
     }
 
-    /* РџРѕСЃР»Рµ РІС‹Р±РѕСЂР°: РµСЃС‚СЊ РµС‰С‘ РІРѕР»РЅС‹? */
+    /* После выбора: есть ещё волны? */
     if (gs->wave >= gs->totalWaves) {
         gs->phase = PHASE_WIN;
     } else {
@@ -231,16 +251,16 @@ void Core_ApplyUpgrade(GameState *gs, int upgradeId) {
 }
 
 /* --------------------------------------------------------------------- */
-/*  Core_Update  вЂ”  РіР»Р°РІРЅС‹Р№ С‚РёРє Р»РѕРіРёРєРё (РІС‹Р·С‹РІР°РµС‚СЃСЏ РєР°Р¶РґС‹Р№ РєР°РґСЂ)         */
+/*  Core_Update  —  главный тик логики (вызывается каждый кадр)         */
 /* --------------------------------------------------------------------- */
-void Core_Update(GameState *gs, float dt) {
+void Core_Update(GameState* gs, float dt) {
     if (gs->phase == PHASE_MENU)    return;
     if (gs->phase != PHASE_PLAYING) return;
 
-    Player     *p   = &gs->player;
-    InputState *inp = &gs->input;
+    Player* p = &gs->player;
+    InputState* inp = &gs->input;
 
-    /* -- Р”РІРёР¶РµРЅРёРµ РёРіСЂРѕРєР° -------------------------------------------- */
+    /* -- Движение игрока -------------------------------------------- */
     float dx = 0, dy = 0;
     if (inp->left)  dx -= 1.0f;
     if (inp->right) dx += 1.0f;
@@ -251,20 +271,25 @@ void Core_Update(GameState *gs, float dt) {
     p->x += dx * p->speed * dt;
     p->y += dy * p->speed * dt;
 
-    /* РћРіСЂР°РЅРёС‡РµРЅРёРµ Р°СЂРµРЅС‹ (РёРіСЂРѕРє вЂ” РєРІР°РґСЂР°С‚ 24x24) */
-    if (p->x <  12)         p->x =  12;
-    if (p->x >  ARENA_W-12) p->x =  ARENA_W-12;
-    if (p->y <  12)         p->y =  12;
-    if (p->y >  ARENA_H-12) p->y =  ARENA_H-12;
+    /* Ограничение арены (игрок — квадрат 24x24) */
+    if (p->x < 12)         p->x = 12;
+    if (p->x > ARENA_W - 12) p->x = ARENA_W - 12;
+    if (p->y < 12)         p->y = 12;
+    if (p->y > ARENA_H - 12) p->y = ARENA_H - 12;
 
-    /* -- РўР°Р№РјРµСЂ РЅРµСѓСЏР·РІРёРјРѕСЃС‚Рё ---------------------------------------- */
+    /* -- Таймер неуязвимости ---------------------------------------- */
     if (p->invTimer > 0) p->invTimer -= dt;
 
-    /* -- HP Regen (Р°РїРіСЂРµР№Рґ 0) --------------------------------------- */
-    /* РџСЂРѕСЃС‚РµР№С€РёР№ РІР°СЂРёР°РЅС‚: РЅР°РєР°РїР»РёРІР°РµРј РІСЂРµРјСЏ, РєР°Р¶РґС‹Рµ 5 СЃРµРє +1 HP        */
-    /* Р РµР°Р»РёР·СѓРµС‚СЃСЏ С‡РµСЂРµР· СЃС‡С‘С‚С‡РёРє С‚РёРєРѕРІ (РґРѕР±Р°РІСЊ РїРѕР»Рµ РµСЃР»Рё РЅСѓР¶РЅРѕ)         */
-
-    /* -- РЎС‚СЂРµР»СЊР±Р°: Р°РІС‚Рѕ РїРѕ Р±Р»РёР¶Р°Р№С€РµРјСѓ РІСЂР°РіСѓ ------------------------- */
+    /* -- HP Regen (апгрейд 0) --------------------------------------- */
+    if (gs->player.upgrades[0] > 0 && p->hp < p->maxHp) {
+        p->regenTimer += dt;
+        if (p->regenTimer >= 5.0f) {
+            p->hp += gs->player.upgrades[0]; // +1 HP за каждый уровень апгрейда
+            if (p->hp > p->maxHp) p->hp = p->maxHp;
+            p->regenTimer = 0.0f;
+        }
+    }
+    /* -- Стрельба: авто по ближайшему врагу ------------------------- */
     p->fireTimer -= dt;
     if (p->fireTimer <= 0.0f) {
         int target = FindNearestEnemy(gs);
@@ -279,7 +304,7 @@ void Core_Update(GameState *gs, float dt) {
         }
     }
 
-    /* -- РЎРїР°РІРЅ РІСЂР°РіРѕРІ РІРѕР»РЅС‹ ----------------------------------------- */
+    /* -- Спавн врагов волны ----------------------------------------- */
     if (gs->enemiesLeft > 0) {
         gs->spawnTimer -= dt;
         if (gs->spawnTimer <= 0.0f) {
@@ -289,77 +314,87 @@ void Core_Update(GameState *gs, float dt) {
         }
     }
 
-    /* -- Р”РІРёР¶РµРЅРёРµ РІСЂР°РіРѕРІ Рё СѓСЂРѕРЅ РёРіСЂРѕРєСѓ ------------------------------ */
-    int piercing = gs->player.upgrades[4]; /* Р°РїРіСЂРµР№Рґ РїСЂРѕР±РёС‚РёСЏ         */
+    /* -- Движение врагов и урон игроку ------------------------------ */
+    int piercing = gs->player.upgrades[4]; /* апгрейд пробития         */
 
     for (int i = 0; i < MAX_ENEMIES; i++) {
-        Enemy *e = &gs->enemies[i];
+        Enemy* e = &gs->enemies[i];
         if (!e->alive) continue;
 
-        /* Р”РІРёР¶РµРЅРёРµ Рє РёРіСЂРѕРєСѓ */
+        /* Движение к игроку */
         float ex = p->x - e->x;
         float ey = p->y - e->y;
         Normalize(&ex, &ey);
         e->x += ex * e->speed * dt;
         e->y += ey * e->speed * dt;
 
-        /* РљРѕР»Р»РёР·РёСЏ СЃ РёРіСЂРѕРєРѕРј */
+        /* Узнаем реальный размер конкретного врага */
+        float eSize = GetEnemySize(e->type);
+
+        /* Коллизия с игроком */
         if (p->invTimer <= 0.0f &&
-            CheckAABB(p->x, p->y, 24, 24, e->x, e->y, 28, 28)) {
-            p->hp      -= e->damage;
-            p->invTimer = 0.8f;   /* 0.8 СЃРµРє РЅРµСѓСЏР·РІРёРјРѕСЃС‚Рё */
+            CheckAABB(p->x, p->y, 24, 24, e->x, e->y, eSize, eSize)) {
+            p->hp -= e->damage;
+            p->invTimer = 0.8f;   /* 0.8 сек неуязвимости */
             if (p->hp <= 0) { p->hp = 0; gs->phase = PHASE_DEAD; return; }
         }
     }
 
-    /* -- Р”РІРёР¶РµРЅРёРµ РїСѓР»СЊ Рё РїРѕРїР°РґР°РЅРёСЏ ---------------------------------- */
+    /* -- Движение пуль и попадания ---------------------------------- */
     for (int i = 0; i < MAX_BULLETS; i++) {
-        Bullet *b = &gs->bullets[i];
+        Bullet* b = &gs->bullets[i];
         if (!b->alive) continue;
 
         b->x += b->vx * dt;
         b->y += b->vy * dt;
 
-        /* Р’С‹Р»РµС‚РµР»Р° Р·Р° Р°СЂРµРЅСѓ */
-        if (b->x < -40 || b->x > ARENA_W+40 ||
-            b->y < -40 || b->y > ARENA_H+40) {
+        /* Вылетела за арену */
+        if (b->x < -40 || b->x > ARENA_W + 40 ||
+            b->y < -40 || b->y > ARENA_H + 40) {
             b->alive = 0; continue;
         }
 
-        /* РџСЂРѕРІРµСЂСЏРµРј РїРѕРїР°РґР°РЅРёСЏ РІ РєР°Р¶РґРѕРіРѕ РІСЂР°РіР° */
+        /* Проверяем попадания в каждого врага */
         int hits = 0;
         for (int j = 0; j < MAX_ENEMIES; j++) {
-            Enemy *e = &gs->enemies[j];
+            Enemy* e = &gs->enemies[j];
             if (!e->alive) continue;
             if (!CheckAABB(b->x, b->y, 8, 8, e->x, e->y, 28, 28)) continue;
 
-            e->hp -= b->damage;
-            hits++;
+            /* Уже попали в этого врага раньше — пропускаем */
+            int alreadyHit = 0;
+            for (int k = 0; k < b->hitCount; k++)
+                if (b->hitIds[k] == j) { alreadyHit = 1; break; }
+            if (alreadyHit) continue;
 
+            /* Фиксируем попадание */
+            if (b->hitCount < 16) b->hitIds[b->hitCount] = j;
+            b->hitCount++;
+
+            e->hp -= b->damage;
             if (e->hp <= 0) {
-                /* Р’СЂР°Рі СѓР±РёС‚ вЂ” РґСЂРѕРї РіРµРјР° */
                 int gemValue = (e->type == ENEMY_TANK) ? 3 : 1;
                 SpawnGem(gs, e->x, e->y, gemValue);
                 gs->score += (e->type == ENEMY_TANK) ? 30 : 10;
                 e->alive = 0;
             }
 
-            /* Р‘РµР· РїСЂРѕР±РёС‚РёСЏ вЂ” РїСѓР»СЏ РёСЃС‡РµР·Р°РµС‚ РїРѕСЃР»Рµ 1 РїРѕРїР°РґР°РЅРёСЏ */
-            if (!piercing || hits > 1) { b->alive = 0; break; }
+            /* Пробитие: piercing = кол-во взятых апгрейдов, т.е. пробивает piercing+1 врагов */
+            if (b->hitCount > piercing) { b->alive = 0; break; }
         }
     }
 
-    /* -- РџРѕРґР±РѕСЂ РіРµРјРѕРІ ----------------------------------------------- */
+    /* -- Подбор гемов ----------------------------------------------- */
     for (int i = 0; i < MAX_GEMS; i++) {
-        XpGem *g = &gs->gems[i];
+        XpGem* g = &gs->gems[i];
         if (!g->alive) continue;
         if (CheckAABB(p->x, p->y, 32, 32, g->x, g->y, 14, 14)) {
-            p->xp   += g->value;
+            gs->score += g->value * 5;
             g->alive = 0;
         }
     }
 
-    /* -- РљРѕРЅРµС† РІРѕР»РЅС‹: РІСЃРµ РІСЂР°РіРё СѓР±РёС‚С‹ Рё Р±РѕР»СЊС€Рµ РЅРµ СЃРїР°РІРЅСЏС‚СЃСЏ ---------- */
+    /* -- Конец волны: все враги убиты и больше не спавнятся ---------- */
     if (gs->enemiesLeft == 0) {
         int anyAlive = 0;
         for (int i = 0; i < MAX_ENEMIES; i++)
@@ -369,4 +404,33 @@ void Core_Update(GameState *gs, float dt) {
             gs->phase = PHASE_UPGRADE;
         }
     }
+}
+
+void Scores_Load(HighScores *hs) {
+    FILE *f = fopen("scores.dat", "rb");
+    if (!f) { hs->count = 0; return; }
+    fread(hs, sizeof(*hs), 1, f);
+    fclose(f);
+    if (hs->count < 0 || hs->count > MAX_SCORES) hs->count = 0;
+}
+
+void Scores_Save(const HighScores *hs) {
+    FILE *f = fopen("scores.dat", "wb");
+    if (!f) return;
+    fwrite(hs, sizeof(*hs), 1, f);
+    fclose(f);
+}
+
+void Scores_Submit(GameState *gs) {
+    HighScores *hs = &gs->highScores;
+    if (hs->count < MAX_SCORES) hs->count++;
+    int i = hs->count - 1;
+    while (i > 0 && hs->entries[i-1].score < gs->score) {
+        hs->entries[i] = hs->entries[i-1];
+        i--;
+    }
+    hs->entries[i].score      = gs->score;
+    hs->entries[i].wave       = gs->wave;
+    hs->entries[i].difficulty = gs->difficulty;
+    Scores_Save(hs);
 }
