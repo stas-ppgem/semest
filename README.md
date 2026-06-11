@@ -44,6 +44,12 @@
 
 ## Сборка
 
+## Быстрый запуск
+
+Скачать готовый `.exe` → [Releases](https://github.com/stas-ppgem/semest/releases)
+
+Распаковать архив, запустить `sem.exe`.
+
 ### Требования
 
 - Windows 10/11 (x64)
